@@ -1,0 +1,9 @@
+[2026-03-26 07:57:46] Starting backup of database: pos_system
+[2026-03-26 07:57:46] Backup file: C:\Users\JOSEPH\Desktop\SOP\Backend\backups\backup_pos_system_20260326_075746.sql
+[2026-03-26 07:57:47] Backup created: backup_pos_system_20260326_075746.sql
+[2026-03-26 07:57:47] Compressing backup...
+[2026-03-26 07:57:48] Backup compressed successfully: 0.01 MB
+[2026-03-26 07:57:48] Cleaning up old backups...
+[2026-03-26 07:57:48] Cleanup complete. Deleted 0 old backup(s)
+[2026-03-26 07:57:48] Backup process completed successfully!
+[2026-03-26 07:57:48] Location: C:\Users\JOSEPH\Desktop\SOP\Backend\backups\backup_pos_system_20260326_075746.sql.zip

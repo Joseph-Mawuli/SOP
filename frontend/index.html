@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS POS — Point of Sale</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Paystack Integration -->
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <script>
+        // Initialize Paystack public key from environment
+        const PAYSTACK_PUBLIC_KEY = localStorage.getItem('paystack_public_key') || 'pk_test_placeholder_replace_with_your_actual_key';
+    </script>
+</head>
+
+<body>
+
+    <!-- Ambient Background -->
+    <div class="ambient-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <!-- Theme Toggle -->
+    <div class="theme-toggle-container">
+        <button id="themeToggle" class="theme-toggle-btn" title="Toggle Dark Mode">
+            <span class="theme-icon">☽</span>
+        </button>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="app-container">
+
+        <!-- Sidebar -->
+        <nav id="sidebar" class="sidebar hidden">
+            <div class="sidebar-brand">
+                <div class="brand-mark">N</div>
+                <div class="brand-text">
+                    <span class="brand-name">NEXUS</span>
+                    <span class="brand-sub">Point of Sale</span>
+                </div>
+            </div>
+
+            <div class="sidebar-user">
+                <div class="user-avatar" id="userAvatar">A</div>
+                <div class="user-info">
+                    <span class="user-name" id="userName">Admin</span>
+                    <span id="userRole" class="user-role-badge">Role</span>
+                </div>
+            </div>
+
+            <div class="nav-section-label">NAVIGATION</div>
+            <ul class="sidebar-menu">
+                <li>
+                    <a href="#" data-page="dashboard" class="menu-item active">
+                        <span class="menu-icon">⊞</span>
+                        <span>Dashboard</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="posMenuItem">
+                    <a href="#" data-page="pos" class="menu-item">
+                        <span class="menu-icon">⊕</span>
+                        <span>POS / Checkout</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="productMenuItem">
+                    <a href="#" data-page="products" class="menu-item">
+                        <span class="menu-icon">◫</span>
+                        <span>Products</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="inventoryMenuItem">
+                    <a href="#" data-page="inventory" class="menu-item">
+                        <span class="menu-icon">≡</span>
+                        <span>Inventory</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="customerMenuItem">
+                    <a href="#" data-page="customers" class="menu-item">
+                        <span class="menu-icon">◎</span>
+                        <span>Customers</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="reportsMenuItem">
+                    <a href="#" data-page="reports" class="menu-item">
+                        <span class="menu-icon">◈</span>
+                        <span>Reports</span>
+                        <span class="menu-arrow">›</span>
+                    </a>
+                </li>
+                <li id="usersMenuItem">
+                    <a href="#" data-page="users" class="menu-item">
+                        <span class="menu-icon">⊛</span>
+                        <span>Users</span>
+                        <span class="menu-pill">Admin</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn-logout">
+                    <span>⇠</span> Sign Out
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- ── LOGIN PAGE ── -->
+            <div id="loginPage" class="page active">
+                <div class="auth-split">
+                    <div class="auth-left">
+                        <div class="auth-hero-text">
+                            <div class="hero-eyebrow">NEXUS POS SYSTEM</div>
+                            <h1 class="hero-heading">Retail<br>Intelligence<br>Redefined.</h1>
+                            <p class="hero-body">Manage inventory, process sales, and grow your business — all in one
+                                place.</p>
+                        </div>
+                        <div class="auth-stats">
+                            <div class="auth-stat"><span class="stat-num">99%</span><span
+                                    class="stat-desc">Uptime</span></div>
+                            <div class="auth-stat"><span class="stat-num">2s</span><span class="stat-desc">Avg.
+                                    Checkout</span></div>
+                            <div class="auth-stat"><span class="stat-num">∞</span><span
+                                    class="stat-desc">Scalable</span></div>
+                        </div>
+                    </div>
+                    <div class="auth-right">
+                        <div class="auth-card">
+                            <div class="auth-card-header">
+                                <h2>Welcome back</h2>
+                                <p>Sign in to your workspace</p>
+                            </div>
+                            <form id="loginForm">
+                                <div class="field-group">
+                                    <label for="email">Email address</label>
+                                    <div class="field-wrap">
+                                        <input type="email" id="email" required placeholder="you@company.com">
+                                        <span class="field-icon">@</span>
+                                    </div>
+                                </div>
+                                <div class="field-group">
+                                    <label for="password">Password</label>
+                                    <div class="field-wrap password-wrap">
+                                        <input type="password" id="password" required placeholder="••••••••••"
+                                            autocomplete="current-password">
+                                        <button type="button" class="pw-toggle" id="passwordToggle"
+                                            onclick="togglePasswordVisibility('password', 'passwordToggle')">
+                                            <span>👁</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-full">Sign In →</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── DASHBOARD PAGE ── -->
+            <div id="dashboardPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p id="userGreeting" class="page-eyebrow">Good morning</p>
+                        <h1 class="page-title">Dashboard</h1>
+                    </div>
+                    <div class="header-date" id="headerDate"></div>
+                </div>
+
+                <div class="kpi-row">
+                    <div class="kpi-card kpi-accent">
+                        <div class="kpi-label">Today's Revenue</div>
+                        <div class="kpi-value" id="todaySalesAmount">$0.00</div>
+                        <div class="kpi-meta"><span class="kpi-dot"></span><span id="todayTransactions">0</span>
+                            transactions</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Customers</div>
+                        <div class="kpi-value" id="totalCustomers">0</div>
+                        <div class="kpi-meta">Registered accounts</div>
+                    </div>
+                    <div class="kpi-card kpi-warn">
+                        <div class="kpi-label">Low Stock</div>
+                        <div class="kpi-value" id="lowStockCount">0</div>
+                        <div class="kpi-meta">Items need reorder</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Inventory Value</div>
+                        <div class="kpi-value" id="inventoryValue">$0.00</div>
+                        <div class="kpi-meta">Total stock worth</div>
+                    </div>
+                </div>
+
+                <div id="adminDashboard" class="hidden">
+                    <div class="section-header">
+                        <h2 class="section-title">Quick Actions</h2>
+                        <span class="section-badge">Admin / Manager</span>
+                    </div>
+                    <div class="quick-actions-grid">
+                        <button class="quick-action-card quick-action" data-page="products">
+                            <span class="qa-icon">◫</span>
+                            <span class="qa-label">Manage Products</span>
+                            <span class="qa-arrow">→</span>
+                        </button>
+                        <button class="quick-action-card quick-action" data-page="inventory">
+                            <span class="qa-icon">≡</span>
+                            <span class="qa-label">Check Inventory</span>
+                            <span class="qa-arrow">→</span>
+                        </button>
+                        <button class="quick-action-card quick-action" data-page="reports">
+                            <span class="qa-icon">◈</span>
+                            <span class="qa-label">View Reports</span>
+                            <span class="qa-arrow">→</span>
+                        </button>
+                        <button class="quick-action-card quick-action" data-page="users">
+                            <span class="qa-icon">⊛</span>
+                            <span class="qa-label">Manage Users</span>
+                            <span class="qa-arrow">→</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── POS PAGE ── -->
+            <div id="posPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">CHECKOUT</p>
+                        <h1 class="page-title">Point of Sale</h1>
+                    </div>
+                </div>
+
+                <div class="pos-container">
+                    <div class="pos-left">
+                        <div class="search-box">
+                            <span class="search-icon">⌕</span>
+                            <input type="text" id="productSearch" placeholder="Search products or scan barcode…">
+                            <div id="searchResults" class="search-results hidden">
+                                <ul id="productList"></ul>
+                            </div>
+                        </div>
+                        <div class="products-grid" id="productsGrid"></div>
+                    </div>
+
+                    <div class="pos-right">
+                        <div class="cart-header">
+                            <h2>Cart</h2>
+                            <span class="cart-count" id="cartCount">0 items</span>
+                        </div>
+                        <div class="cart-items" id="cartItems">
+                            <div class="empty-cart">
+                                <span class="empty-icon">⊕</span>
+                                <p>Cart is empty</p>
+                                <small>Select a product to begin</small>
+                            </div>
+                        </div>
+
+                        <div class="cart-summary">
+                            <div class="summary-row">
+                                <span>Subtotal</span>
+                                <span id="subtotal">$0.00</span>
+                            </div>
+                            <div class="summary-row">
+                                <label for="discountAmount">Discount</label>
+                                <input type="number" id="discountAmount" min="0" step="0.01" value="0"
+                                    class="inline-input">
+                            </div>
+                            <div class="summary-row">
+                                <span>Tax (10%)</span>
+                                <span id="taxAmount">$0.00</span>
+                            </div>
+                            <div class="summary-row summary-total">
+                                <span>Total</span>
+                                <span id="totalAmount">$0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="customerSelect">Customer</label>
+                            <div class="field-wrap select-wrap">
+                                <select id="customerSelect">
+                                    <option value="">Walk-in Customer</option>
+                                </select>
+                                <span class="select-arrow">▾</span>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label>Payment Method</label>
+                            <div class="payment-methods">
+                                <label class="pay-option">
+                                    <input type="radio" name="paymentMethod" id="paymentMethod" value="cash" checked>
+                                    <span class="pay-label">Cash</span>
+                                </label>
+                                <label class="pay-option">
+                                    <input type="radio" name="paymentMethod" value="card">
+                                    <span class="pay-label">Card</span>
+                                </label>
+                                <label class="pay-option">
+                                    <input type="radio" name="paymentMethod" value="mobile_money">
+                                    <span class="pay-label">Mobile</span>
+                                </label>
+                                <label class="pay-option">
+                                    <input type="radio" name="paymentMethod" value="split">
+                                    <span class="pay-label">Split</span>
+                                </label>
+                                <label class="pay-option">
+                                    <input type="radio" name="paymentMethod" value="paystack">
+                                    <span class="pay-label">Paystack</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="amountPaid">Amount Paid</label>
+                            <div class="field-wrap">
+                                <input type="number" id="amountPaid" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                            <p id="changeAmount" class="change-display"></p>
+                        </div>
+
+                        <div class="pos-actions">
+                            <button id="clearCartBtn" class="btn btn-ghost">Clear</button>
+                            <button id="checkoutBtn" class="btn btn-primary btn-checkout">Checkout →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── PRODUCTS PAGE ── -->
+            <div id="productsPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">CATALOGUE</p>
+                        <h1 class="page-title">Products</h1>
+                    </div>
+                    <button id="addProductBtn" class="btn btn-primary" style="display:none;">+ Add Product</button>
+                </div>
+                <div class="toolbar">
+                    <div class="field-wrap search-wrap">
+                        <span class="search-icon-sm">⌕</span>
+                        <input type="text" id="productFilterSearch" placeholder="Search products…">
+                    </div>
+                    <div class="field-wrap select-wrap select-sm">
+                        <select id="categoryFilter">
+                            <option value="">All Categories</option>
+                        </select>
+                        <span class="select-arrow">▾</span>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="productsTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Barcode</th>
+                                <th>Category</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ── INVENTORY PAGE ── -->
+            <div id="inventoryPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">STOCK</p>
+                        <h1 class="page-title">Inventory</h1>
+                    </div>
+                </div>
+                <div id="lowStockAlerts" class="alerts-section"></div>
+                <div class="table-wrap">
+                    <table id="inventoryTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Current Stock</th>
+                                <th>Reorder Level</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ── CUSTOMERS PAGE ── -->
+            <div id="customersPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">CRM</p>
+                        <h1 class="page-title">Customers</h1>
+                    </div>
+                    <button id="addCustomerBtn" class="btn btn-primary">+ Add Customer</button>
+                </div>
+                <div class="toolbar">
+                    <div class="field-wrap search-wrap">
+                        <span class="search-icon-sm">⌕</span>
+                        <input type="text" id="customerSearch" placeholder="Search customers…">
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="customersTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Customer Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Total Purchases</th>
+                                <th>Loyalty Points</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customersTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ── REPORTS PAGE ── -->
+            <div id="reportsPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">ANALYTICS</p>
+                        <h1 class="page-title">Reports</h1>
+                    </div>
+                </div>
+                <div class="reports-filters hidden">
+                    <div class="field-group">
+                        <label for="reportStartDate">From</label>
+                        <div class="field-wrap"><input type="date" id="reportStartDate"></div>
+                    </div>
+                    <div class="field-group">
+                        <label for="reportEndDate">To</label>
+                        <div class="field-wrap"><input type="date" id="reportEndDate"></div>
+                    </div>
+                    <button class="btn btn-primary">Generate</button>
+                    <button class="btn btn-ghost">Export CSV</button>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-section" style="margin-bottom: 30px;">
+                    <div class="reports-grid">
+                        <div class="report-card chart-card">
+                            <div class="report-card-header">
+                                <span class="report-icon">📈</span>
+                                <h3>Daily Sales Trend</h3>
+                            </div>
+                            <div style="position:relative; height:300px;">
+                                <canvas id="dailySalesChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="report-card chart-card">
+                            <div class="report-card-header">
+                                <span class="report-icon">📊</span>
+                                <h3>Top Products</h3>
+                            </div>
+                            <div style="position:relative; height:300px;">
+                                <canvas id="topProductsChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="report-card chart-card">
+                            <div class="report-card-header">
+                                <span class="report-icon">📦</span>
+                                <h3>Inventory Distribution</h3>
+                            </div>
+                            <div style="position:relative; height:300px;">
+                                <canvas id="inventoryChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="report-card chart-card">
+                            <div class="report-card-header">
+                                <span class="report-icon">💰</span>
+                                <h3>Cashier Performance</h3>
+                            </div>
+                            <div style="position:relative; height:300px;">
+                                <canvas id="cashierChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Cards Section -->
+                <h2 style="margin: 30px 0 15px 0; font-size: 16px; font-weight: 600; color: var(--text-primary);">Summary Overview</h2>
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <div class="report-card-header">
+                            <span class="report-icon">◈</span>
+                            <h3>Daily Sales</h3>
+                        </div>
+                        <div id="dailySalesReport" class="report-body"></div>
+                        <button class="btn btn-ghost btn-sm" data-report="daily">View Details →</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-card-header">
+                            <span class="report-icon">◫</span>
+                            <h3>Top Products</h3>
+                        </div>
+                        <div id="topProductsReport" class="report-body"></div>
+                        <button class="btn btn-ghost btn-sm" data-report="products">View Details →</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-card-header">
+                            <span class="report-icon">≡</span>
+                            <h3>Inventory Status</h3>
+                        </div>
+                        <div id="inventoryStatusReport" class="report-body"></div>
+                        <button class="btn btn-ghost btn-sm" data-report="inventory">View Details →</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-card-header">
+                            <span class="report-icon">⊛</span>
+                            <h3>Cashier Performance</h3>
+                        </div>
+                        <div id="cashierPerformanceReport" class="report-body"></div>
+                        <button class="btn btn-ghost btn-sm" data-report="cashier">View Details →</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── USERS PAGE ── -->
+            <div id="usersPage" class="page">
+                <div class="page-header">
+                    <div>
+                        <p class="page-eyebrow">ADMIN</p>
+                        <h1 class="page-title">User Management</h1>
+                    </div>
+                    <button id="addUserBtn" class="btn btn-primary">+ Add User</button>
+                </div>
+                <div class="toolbar">
+                    <div class="field-wrap search-wrap">
+                        <span class="search-icon-sm">⌕</span>
+                        <input type="text" id="userSearch" placeholder="Search users…">
+                    </div>
+                    <div class="field-wrap select-wrap select-sm">
+                        <select id="roleFilter">
+                            <option value="">All Roles</option>
+                            <option value="administrator">Administrator</option>
+                            <option value="cashier">Cashier</option>
+                        </select>
+                        <span class="select-arrow">▾</span>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="usersTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ── MODALS ── -->
+
+            <!-- Add / Edit User Modal -->
+            <div id="userModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="userModalTitle">Add User</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <form id="userForm">
+                        <input type="hidden" id="userIdField">
+                        <div class="field-row">
+                            <div class="field-group">
+                                <label for="userFirstName">First Name</label>
+                                <div class="field-wrap"><input type="text" id="userFirstName" required
+                                        placeholder="John"></div>
+                            </div>
+                            <div class="field-group">
+                                <label for="userLastName">Last Name</label>
+                                <div class="field-wrap"><input type="text" id="userLastName" placeholder="Doe"></div>
+                            </div>
+                        </div>
+                        <div class="field-group">
+                            <label for="userUsername">Username</label>
+                            <div class="field-wrap"><input type="text" id="userUsername" required placeholder="johndoe">
+                            </div>
+                        </div>
+                        <div class="field-group">
+                            <label for="userEmail">Email</label>
+                            <div class="field-wrap">
+                                <input type="email" id="userEmail" required placeholder="john@company.com">
+                                <span class="field-icon">@</span>
+                            </div>
+                        </div>
+                        <div class="field-group" id="passwordFieldGroup">
+                            <label for="userPassword">Password</label>
+                            <div class="field-wrap password-wrap">
+                                <input type="password" id="userPassword" placeholder="••••••••••"
+                                    autocomplete="current-password">
+                                <button type="button" class="pw-toggle"
+                                    onclick="togglePasswordVisibility('userPassword', 'userPwToggle')"
+                                    id="userPwToggle">
+                                    <span>👁</span>
+                                </button>
+                            </div>
+                            <p class="field-hint" id="passwordHint">Leave blank to keep current password</p>
+                        </div>
+                        <div class="field-group">
+                            <label for="userRole">Role</label>
+                            <div class="field-wrap select-wrap">
+                                <select id="userRole" required>
+                                    <option value="cashier">Cashier</option>
+                                    <option value="administrator">Administrator</option>
+                                </select>
+                                <span class="select-arrow">▾</span>
+                            </div>
+                        </div>
+                        <div class="role-info" id="roleInfo">
+                            <div class="role-info-card" data-role="cashier">
+                                <strong>Cashier</strong> — Can process sales and view customers only.
+                            </div>
+                            <div class="role-info-card" data-role="administrator">
+                                <strong>Administrator</strong> — Full access including user management.
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Save User →</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Product Modal -->
+            <div id="productModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="productModalTitle">Add Product</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <form id="productForm">
+                        <div class="field-group">
+                            <label for="productName">Product Name</label>
+                            <div class="field-wrap"><input type="text" id="productName" required
+                                    placeholder="e.g. Wireless Headphones"></div>
+                        </div>
+                        <div class="field-row">
+                            <div class="field-group">
+                                <label for="productBarcode">Barcode</label>
+                                <div class="field-wrap"><input type="text" id="productBarcode" placeholder="Optional">
+                                </div>
+                            </div>
+                            <div class="field-group">
+                                <label for="productCategory">Category</label>
+                                <div class="field-wrap"><input type="text" id="productCategory" required
+                                        placeholder="e.g. Electronics"></div>
+                            </div>
+                        </div>
+                        <div class="field-row">
+                            <div class="field-group">
+                                <label for="productPrice">Unit Price</label>
+                                <div class="field-wrap"><input type="number" id="productPrice" step="0.01" required
+                                        placeholder="0.00"></div>
+                            </div>
+                            <div class="field-group">
+                                <label for="productCost">Cost Price</label>
+                                <div class="field-wrap"><input type="number" id="productCost" step="0.01"
+                                        placeholder="0.00"></div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Save Product →</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Customer Modal -->
+            <div id="customerModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="customerModalTitle">Add Customer</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <form id="customerForm">
+                        <div class="field-group">
+                            <label for="customerName">Full Name</label>
+                            <div class="field-wrap"><input type="text" id="customerName" required
+                                    placeholder="John Doe"></div>
+                        </div>
+                        <div class="field-group">
+                            <label for="customerEmail">Email</label>
+                            <div class="field-wrap">
+                                <input type="email" id="customerEmail" placeholder="john@email.com">
+                                <span class="field-icon">@</span>
+                            </div>
+                        </div>
+                        <div class="field-group">
+                            <label for="customerPhone">Phone</label>
+                            <div class="field-wrap"><input type="tel" id="customerPhone" placeholder="+1 000 000 0000">
+                            </div>
+                        </div>
+                        <div class="field-group">
+                            <label for="customerLoyaltyPoints">Initial Loyalty Points</label>
+                            <div class="field-wrap"><input type="number" id="customerLoyaltyPoints" min="0" value="0"
+                                    placeholder="0"></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Save Customer →</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Customer Details Modal -->
+            <div id="customerDetailsModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="customerDetailsTitle">Customer Details</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <div id="customerDetailsContent" style="padding: 20px;">
+                        <!-- Customer info will be dynamically loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Adjustment Modal -->
+            <div id="inventoryModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Adjust Stock</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+
+                    <!-- Product info banner -->
+                    <div class="inv-product-banner">
+                        <div class="inv-product-info">
+                            <span class="inv-product-name" id="invProductName">—</span>
+                            <span class="inv-product-meta" id="invProductMeta">Current stock: —</span>
+                        </div>
+                        <div class="inv-stock-badge" id="invStockBadge">0</div>
+                    </div>
+
+                    <form id="inventoryForm">
+                        <input type="hidden" id="invProductId">
+
+                        <div class="field-group">
+                            <label for="adjustmentType">Adjustment Type</label>
+                            <div class="field-wrap select-wrap">
+                                <select id="adjustmentType">
+                                    <option value="add">➕ Add Stock (Restock / Purchase)</option>
+                                    <option value="remove">➖ Remove Stock (Damage / Loss)</option>
+                                    <option value="set">◎ Set Exact Quantity</option>
+                                </select>
+                                <span class="select-arrow">▾</span>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="adjustmentQty">Quantity</label>
+                            <div class="field-wrap">
+                                <input type="number" id="adjustmentQty" min="0" step="1" required placeholder="0"
+                                    style="font-size:20px; font-weight:700; text-align:center;">
+                            </div>
+                        </div>
+
+                        <!-- Live preview -->
+                        <div class="inv-preview" id="invPreview">
+                            <span class="inv-preview-label">New stock will be</span>
+                            <span class="inv-preview-value" id="invPreviewValue">—</span>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="adjustmentReason">Reason <span
+                                    style="opacity:0.5;font-weight:400;">(optional)</span></label>
+                            <div class="field-wrap">
+                                <input type="text" id="adjustmentReason"
+                                    placeholder="e.g. Monthly restock, damaged goods…">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-full">Save Adjustment →</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Receipt Modal -->
+            <div id="receiptModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content modal-receipt">
+                    <div class="modal-header">
+                        <h2>Receipt</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <div id="receiptContent" class="receipt"></div>
+                    <div class="receipt-actions">
+                        <button id="printReceiptBtn" class="btn btn-primary">Print</button>
+                        <button id="emailReceiptBtn" class="btn btn-ghost">Email</button>
+                        <button id="closeReceiptBtn" class="btn btn-danger-ghost">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Modal -->
+            <div id="paymentModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Payment</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+
+                    <!-- Step 1: Summary -->
+                    <div id="payStep1" class="pay-step">
+                        <h3 style="margin-bottom: 20px;">Payment Summary</h3>
+                        <div class="pay-summary">
+                            <div class="pay-row">
+                                <span class="pay-label">Amount Due</span>
+                                <span id="payDueAmount" class="pay-value">$0.00</span>
+                            </div>
+                            <div class="pay-row">
+                                <span class="pay-label">Payment Method</span>
+                                <span id="payMethodLabel" class="pay-value">CASH</span>
+                            </div>
+                            <div class="pay-row">
+                                <span class="pay-label">Amount Tendered</span>
+                                <span id="payTenderedAmount" class="pay-value">$0.00</span>
+                            </div>
+                            <div class="pay-row" id="payChangeRow">
+                                <span class="pay-label">Change Due</span>
+                                <span id="payChangeAmount" class="pay-value" style="color: #10b981;">$0.00</span>
+                            </div>
+                        </div>
+                        <button id="confirmPayBtn" class="btn btn-primary btn-full" style="margin-top: 20px;">Confirm Payment →</button>
+                    </div>
+
+                    <!-- Step 1.5: Paystack Email Collection -->
+                    <div id="payStep1b" class="pay-step hidden">
+                        <h3 style="margin-bottom: 20px;">Customer Email</h3>
+                        <p style="color: #6b7280; margin-bottom: 15px;">Enter customer email for Paystack payment receipt:</p>
+                        <div class="field-group">
+                            <div class="field-wrap">
+                                <input type="email" id="paystackCustomerEmail" placeholder="customer@example.com" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button id="paystackBackBtn" class="btn btn-ghost btn-full">← Back</button>
+                            <button id="paystackContinueBtn" class="btn btn-primary btn-full">Continue →</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Processing -->
+                    <div id="payStep2" class="pay-step hidden">
+                        <div style="text-align: center; padding: 40px 20px;">
+                            <div class="payment-spinner" style="margin-bottom: 20px;">
+                                <div style="width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                            </div>
+                            <h3>Processing Payment</h3>
+                            <p id="payProcessingText" style="color: #6b7280; margin-top: 10px;">Initialising…</p>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Success -->
+                    <div id="payStep3" class="pay-step hidden">
+                        <div style="text-align: center; padding: 30px 20px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">✓</div>
+                            <h3 style="color: #10b981; margin-bottom: 10px;">Payment Successful</h3>
+                            <p id="paySuccessDetail" style="color: #6b7280; margin-bottom: 30px;">Transaction completed</p>
+                            <div style="display: flex; gap: 10px;">
+                                <button id="viewReceiptBtn" class="btn btn-primary btn-full">View Receipt →</button>
+                                <button id="newSaleBtn" class="btn btn-ghost btn-full">New Sale →</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Report Details Modal -->
+            <div id="reportDetailsModal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="reportDetailsTitle">Report Details</h2>
+                        <button class="modal-close close">✕</button>
+                    </div>
+                    <div id="reportDetailsContent" style="overflow-y: auto; max-height: 60vh; padding: 20px;">
+                        <!-- Content will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications -->
+            <div id="notificationContainer" class="notification-container"></div>
+
+        </main>
+    </div>
+
+    <script src="api.js?v=20260326"></script>
+    <script src="app.js?v=20260326"></script>
+</body>
+
+</html>
