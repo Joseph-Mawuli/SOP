@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.paystack.co https://checkout.paystack.com https://paystack.com https://cdn.jsdelivr.net blob:; script-src-elem 'self' 'unsafe-inline' https://js.paystack.co https://checkout.paystack.com https://paystack.com https://cdn.jsdelivr.net blob:; frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://paystack.com blob:; connect-src 'self' http://localhost:5000 https://api.paystack.co https://checkout.paystack.com https://cdn.jsdelivr.net; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://paystack.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://paystack.com; font-src 'self' https://fonts.gstatic.com;">
     <title>NEXUS POS — Point of Sale</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,8 +16,25 @@
     <!-- Paystack Integration -->
     <script src="https://js.paystack.co/v1/inline.js"></script>
     <script>
-        // Initialize Paystack public key from environment
-        const PAYSTACK_PUBLIC_KEY = localStorage.getItem('paystack_public_key') || 'pk_test_placeholder_replace_with_your_actual_key';
+        // Initialize Paystack public key - will be loaded from backend
+        let PAYSTACK_PUBLIC_KEY = 'pk_test_placeholder_loading...';
+        
+        // Load public key from backend on page load
+        async function loadPaystackKey() {
+            try {
+                const response = await fetch('http://localhost:5000/api/config/paystack-public-key');
+                const result = await response.json();
+                if (result.success && result.data.publicKey) {
+                    PAYSTACK_PUBLIC_KEY = result.data.publicKey;
+                    console.log('Paystack public key loaded successfully');
+                }
+            } catch (error) {
+                console.error('Failed to load Paystack key:', error);
+            }
+        }
+        
+        // Load key when page starts
+        document.addEventListener('DOMContentLoaded', loadPaystackKey);
     </script>
 </head>
 
@@ -208,7 +226,6 @@
                 <div id="adminDashboard" class="hidden">
                     <div class="section-header">
                         <h2 class="section-title">Quick Actions</h2>
-                        <span class="section-badge">Admin / Manager</span>
                     </div>
                     <div class="quick-actions-grid">
                         <button class="quick-action-card quick-action" data-page="products">
@@ -297,40 +314,6 @@
                                 </select>
                                 <span class="select-arrow">▾</span>
                             </div>
-                        </div>
-
-                        <div class="field-group">
-                            <label>Payment Method</label>
-                            <div class="payment-methods">
-                                <label class="pay-option">
-                                    <input type="radio" name="paymentMethod" id="paymentMethod" value="cash" checked>
-                                    <span class="pay-label">Cash</span>
-                                </label>
-                                <label class="pay-option">
-                                    <input type="radio" name="paymentMethod" value="card">
-                                    <span class="pay-label">Card</span>
-                                </label>
-                                <label class="pay-option">
-                                    <input type="radio" name="paymentMethod" value="mobile_money">
-                                    <span class="pay-label">Mobile</span>
-                                </label>
-                                <label class="pay-option">
-                                    <input type="radio" name="paymentMethod" value="split">
-                                    <span class="pay-label">Split</span>
-                                </label>
-                                <label class="pay-option">
-                                    <input type="radio" name="paymentMethod" value="paystack">
-                                    <span class="pay-label">Paystack</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="field-group">
-                            <label for="amountPaid">Amount Paid</label>
-                            <div class="field-wrap">
-                                <input type="number" id="amountPaid" min="0" step="0.01" placeholder="0.00">
-                            </div>
-                            <p id="changeAmount" class="change-display"></p>
                         </div>
 
                         <div class="pos-actions">
@@ -828,47 +811,8 @@
                         <button class="modal-close close">✕</button>
                     </div>
 
-                    <!-- Step 1: Summary -->
-                    <div id="payStep1" class="pay-step">
-                        <h3 style="margin-bottom: 20px;">Payment Summary</h3>
-                        <div class="pay-summary">
-                            <div class="pay-row">
-                                <span class="pay-label">Amount Due</span>
-                                <span id="payDueAmount" class="pay-value">$0.00</span>
-                            </div>
-                            <div class="pay-row">
-                                <span class="pay-label">Payment Method</span>
-                                <span id="payMethodLabel" class="pay-value">CASH</span>
-                            </div>
-                            <div class="pay-row">
-                                <span class="pay-label">Amount Tendered</span>
-                                <span id="payTenderedAmount" class="pay-value">$0.00</span>
-                            </div>
-                            <div class="pay-row" id="payChangeRow">
-                                <span class="pay-label">Change Due</span>
-                                <span id="payChangeAmount" class="pay-value" style="color: #10b981;">$0.00</span>
-                            </div>
-                        </div>
-                        <button id="confirmPayBtn" class="btn btn-primary btn-full" style="margin-top: 20px;">Confirm Payment →</button>
-                    </div>
-
-                    <!-- Step 1.5: Paystack Email Collection -->
-                    <div id="payStep1b" class="pay-step hidden">
-                        <h3 style="margin-bottom: 20px;">Customer Email</h3>
-                        <p style="color: #6b7280; margin-bottom: 15px;">Enter customer email for Paystack payment receipt:</p>
-                        <div class="field-group">
-                            <div class="field-wrap">
-                                <input type="email" id="paystackCustomerEmail" placeholder="customer@example.com" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-top: 20px;">
-                            <button id="paystackBackBtn" class="btn btn-ghost btn-full">← Back</button>
-                            <button id="paystackContinueBtn" class="btn btn-primary btn-full">Continue →</button>
-                        </div>
-                    </div>
-
-                    <!-- Step 2: Processing -->
-                    <div id="payStep2" class="pay-step hidden">
+                    <!-- Step 2: Processing / Paystack Checkout -->
+                    <div id="payStep2" class="pay-step">
                         <div style="text-align: center; padding: 40px 20px;">
                             <div class="payment-spinner" style="margin-bottom: 20px;">
                                 <div style="width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
@@ -913,8 +857,8 @@
         </main>
     </div>
 
-    <script src="api.js?v=20260326"></script>
-    <script src="app.js?v=20260326"></script>
+    <script src="api.js?v=20260403"></script>
+    <script src="app.js?v=20260403"></script>
 </body>
 
 </html>

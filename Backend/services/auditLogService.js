@@ -19,6 +19,9 @@ const logAction = async (auditData) => {
       error_message
     } = auditData;
 
+    // entity_id column is INT in schema; prevent crashes from non-numeric ids (e.g. Paystack references)
+    const normalizedEntityId = Number.isInteger(Number(entity_id)) ? Number(entity_id) : null;
+
     const result = await query(
       `INSERT INTO audit_logs 
        (user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent, status, error_message)
@@ -28,7 +31,7 @@ const logAction = async (auditData) => {
         user_id || null,
         action,
         entity_type,
-        entity_id || null,
+        normalizedEntityId,
         JSON.stringify(old_values || {}),
         JSON.stringify(new_values || {}),
         ip_address,

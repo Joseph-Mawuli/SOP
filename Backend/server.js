@@ -4,6 +4,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const errorHandler = require('./middleware/errorHandler');
 const { generalLimiter, loginLimiter, paymentLimiter } = require('./middleware/rateLimiter');
 
@@ -28,14 +29,37 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Security headers (CSP adjusted for Paystack inline checkout)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://js.paystack.co', 'https://checkout.paystack.com', 'https://paystack.com', 'blob:'],
+        scriptSrcElem: ["'self'", "'unsafe-inline'", 'https://js.paystack.co', 'https://checkout.paystack.com', 'https://paystack.com', 'blob:'],
+        frameSrc: ["'self'", 'https://checkout.paystack.com', 'https://js.paystack.co', 'https://paystack.com', 'blob:'],
+        connectSrc: ["'self'", 'https://api.paystack.co', 'https://checkout.paystack.com', 'https://cdn.jsdelivr.net'],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://paystack.com'],
+        styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://paystack.com'],
+      },
+    },
+  }),
+);
+
 // CORS Configuration
 const corsOptions = {
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // Rate limiting middleware
 app.use('/api/', generalLimiter);
@@ -56,6 +80,16 @@ app.get('/api/health', (req, res) => {
     success: true,
     message: 'POS System Backend is running',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Config endpoint - serve Paystack public key to frontend
+app.get('/api/config/paystack-public-key', (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      publicKey: process.env.PAYSTACK_PUBLIC_KEY
+    }
   });
 });
 

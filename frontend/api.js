@@ -31,8 +31,14 @@ async function apiRequest(endpoint, method = "GET", data = null) {
    if (response.status === 401) {
     logout();
    }
-   const errorData = await response.json();
-   throw new Error(errorData.message || `HTTP ${response.status}`);
+   let errorData = {};
+   try {
+    errorData = await response.json();
+   } catch (e) {
+    // Response is not JSON
+   }
+   const errorMessage = errorData.message || `HTTP ${response.status}`;
+   throw new Error(errorMessage);
   }
 
   const result = await response.json();

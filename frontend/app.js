@@ -7,7 +7,7 @@
 
 let cart = [];
 const TAX_RATE = 0.1;
-const CURRENCY = "USD";
+const CURRENCY = "GHS";
 
 // ============================================
 // PAGE NAVIGATION & INITIALIZATION
@@ -83,11 +83,18 @@ function initializeEventListeners() {
  // POS specific
  document.getElementById("productSearch").addEventListener("input", handleProductSearch);
  document.getElementById("discountAmount").addEventListener("change", updateCartTotals);
- document.getElementById("amountPaid").addEventListener("input", calculateChange);
  document.getElementById("checkoutBtn").addEventListener("click", handleCheckout);
  document.getElementById("clearCartBtn").addEventListener("click", clearCart);
  document.getElementById("addProductBtn").addEventListener("click", openProductModal);
  document.getElementById("addCustomerBtn").addEventListener("click", openCustomerModal);
+
+ // Payment modal close button
+ const paymentModalClose = document.querySelector("#paymentModal .close");
+ if (paymentModalClose) {
+  paymentModalClose.addEventListener("click", (e) => {
+   document.getElementById("paymentModal").classList.add("hidden");
+  });
+ }
 
  // Users page
  document.getElementById("addUserBtn")?.addEventListener("click", openUserModal);
@@ -98,22 +105,6 @@ function initializeEventListeners() {
 
  document.getElementById("productForm").addEventListener("submit", saveProduct);
  document.getElementById("customerForm").addEventListener("submit", saveCustomer);
-
- // Paystack handlers
- document.getElementById("paystackBackBtn")?.addEventListener("click", () => {
-  showPayStep(1);
- });
- document.getElementById("paystackContinueBtn")?.addEventListener("click", handlePaystackContinue);
-
- // Check for Paystack callback
- const urlParams = new URLSearchParams(window.location.search);
- const paystackReference = urlParams.get('reference');
- if (paystackReference && localStorage.getItem('pending_paystack_sale_id')) {
-  handlePaystackReturn(paystackReference);
-  // Clear the URL
-  window.history.replaceState({}, document.title, window.location.pathname);
- }
-}
 
  // Customer search
  document.getElementById("customerSearch")?.addEventListener("input", handleCustomerSearch);
@@ -420,7 +411,7 @@ function renderProductsGrid(products) {
 
   card.innerHTML = `
       <h4>${product.product_name}</h4>
-      <div class="product-price">$${parseFloat(product.unit_price).toFixed(2)}</div>
+      <div class="product-price">₵${parseFloat(product.unit_price).toFixed(2)}</div>
       <div class="product-stock">Stock: ${product.quantity_on_hand || 0}</div>
     `;
 
@@ -475,14 +466,14 @@ function updateCartDisplay() {
         <div class="cart-item">
           <div class="cart-item-info">
             <div class="cart-item-name">${item.product_name}</div>
-            <div class="cart-item-details">$${parseFloat(item.unit_price).toFixed(2)} each</div>
+            <div class="cart-item-details">₵${parseFloat(item.unit_price).toFixed(2)} each</div>
           </div>
           <div class="cart-item-qty">
             <button onclick="decreaseQuantity(${index})">−</button>
             <span>${item.quantity}</span>
             <button onclick="increaseQuantity(${index})">+</button>
           </div>
-          <div class="cart-item-total">$${(item.quantity * item.unit_price).toFixed(2)}</div>
+          <div class="cart-item-total">₵${(item.quantity * item.unit_price).toFixed(2)}</div>
           <button class="cart-item-remove" onclick="removeFromCart(${index})">✕</button>
         </div>`,
    )
@@ -533,22 +524,6 @@ function updateCartTotals() {
  document.getElementById("subtotal").textContent = formatCurrency(subtotal, false);
  document.getElementById("taxAmount").textContent = formatCurrency(tax, false);
  document.getElementById("totalAmount").textContent = formatCurrency(total, false);
-
- calculateChange();
-}
-
-function calculateChange() {
- const total = parseFloat(document.getElementById("totalAmount").textContent.replace("$", "")) || 0;
- const paid = parseFloat(document.getElementById("amountPaid").value) || 0;
- const change = paid - total;
- const changeEl = document.getElementById("changeAmount");
-
- if (paid >= total && paid > 0) {
-  changeEl.textContent = `Change: ${formatCurrency(Math.max(0, change), false)}`;
-  changeEl.classList.add("show");
- } else {
-  changeEl.classList.remove("show");
- }
 }
 
 // ── Step 1: Open payment confirmation modal ──
@@ -559,62 +534,18 @@ function handleCheckout() {
  }
 
  const total = parseFloat(document.getElementById("totalAmount").textContent.replace(/[^0-9.]/g, ""));
- const paid = parseFloat(document.getElementById("amountPaid").value);
 
- const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked');
- const paymentMethod = selectedPayment ? selectedPayment.value : "cash";
-
- // For Paystack, email is not needed in advance, we collect it in the next step
- if (paymentMethod === "paystack") {
-  // Populate modal summary
-  document.getElementById("payDueAmount").textContent = formatCurrency(total, false);
-  document.getElementById("payMethodLabel").textContent = "PAYSTACK";
-  document.getElementById("payChangeRow").style.display = "none";
-  
-  // Skip to email collection step
-  document.getElementById("paystackCustomerEmail").value = "";
-  showPayStep("1b");
-  document.getElementById("paymentModal").classList.remove("hidden");
-  
-  // Store data for later
-  window.paystackCheckoutData = { total, paymentMethod };
-  return;
- }
-
- // For other methods, validate amount paid
- if (!paid || paid < total) {
-  showNotification("Enter an amount equal to or greater than the total", "warning");
-  return;
- }
-
- const change = paid - total;
-
- // Populate modal summary
- document.getElementById("payDueAmount").textContent = formatCurrency(total, false);
- document.getElementById("payTenderedAmount").textContent = formatCurrency(paid, false);
- document.getElementById("payChangeAmount").textContent = formatCurrency(change, false);
- document.getElementById("payMethodLabel").textContent = paymentMethod.replace("_", " ").toUpperCase();
- document.getElementById("payChangeRow").style.display = change > 0 ? "" : "none";
-
- showPayStep(1);
+ // Show processing modal
+ showPayStep(2);
  document.getElementById("paymentModal").classList.remove("hidden");
-
- document.getElementById("confirmPayBtn").onclick = () => processCheckout(total, paid, paymentMethod);
+ 
+ // Directly process checkout - Paystack will handle everything
+ processCheckout(total);
 }
 
-// ── Step 2 & 3: Simulate terminal + process ──
-async function processCheckout(total, paid, paymentMethod) {
+// ── Process Checkout: Create sale and initiate Paystack ──
+async function processCheckout(total) {
  showPayStep(2);
-
- const steps =
-  paymentMethod === "card" || paymentMethod === "mobile_money"
-   ? ["Connecting to terminal…", "Reading card…", "Authorising payment…", "Confirming with bank…"]
-   : ["Recording transaction…", "Calculating change…", "Finalising sale…"];
-
- for (let i = 0; i < steps.length; i++) {
-  document.getElementById("payProcessingText").textContent = steps[i];
-  await delay(700);
- }
 
  try {
   const saleData = {
@@ -626,57 +557,140 @@ async function processCheckout(total, paid, paymentMethod) {
    customer_id: document.getElementById("customerSelect").value || null,
    discount_amount: parseFloat(document.getElementById("discountAmount").value) || 0,
    tax_rate: TAX_RATE,
-   payment_method: paymentMethod,
-   amount_paid: paid,
+   payment_method: "card", // Will be determined by Paystack, using card as default
+   amount_paid: total,
   };
+
+  document.getElementById("payProcessingText").textContent = "Creating sale...";
+  await delay(500);
 
   const sale = await createSale(saleData);
 
-  await processPayment({
+  document.getElementById("payProcessingText").textContent = "Getting customer details...";
+  await delay(500);
+
+  // Build a guaranteed-valid email for Paystack transaction init
+  let customerEmail = "";
+  const customerSelect = document.getElementById("customerSelect");
+  
+  // Generate a valid email for Paystack (uses example.com format)
+  if (customerSelect.value) {
+   customerEmail = `customer${customerSelect.value}@example.com`;
+  } else {
+   customerEmail = `customer@example.com`;
+  }
+
+  customerEmail = customerEmail.trim().toLowerCase();
+
+  if (!customerEmail || !customerEmail.includes("@")) {
+   throw new Error("A valid customer email is required for Paystack checkout");
+  }
+
+  // Initialize Paystack payment
+  const paystackData = await initializePaystackPayment({
    sale_id: sale.sale_id,
-   payment_method: paymentMethod,
-   amount_paid: paid,
-   payment_details: {},
+   customer_email: customerEmail,
+   amount_paid: total,
+   customer_name: customerSelect.value ? 
+    document.querySelector(`#customerSelect option[value="${customerSelect.value}"]`)?.textContent : 
+    'Customer',
+   customer_phone: ''
   });
 
-  const receipt = await getReceipt(sale.sale_id);
+  document.getElementById("payProcessingText").textContent = "Opening Paystack checkout...";
+  await delay(500);
 
-  const change = paid - total;
-  document.getElementById("paySuccessDetail").textContent =
-   change > 0 ? `Change due: ${formatCurrency(change, false)}` : "Payment received in full";
+  // Store sale ID for later verification
+  sessionStorage.setItem('current_sale_id', sale.sale_id);
+  sessionStorage.setItem('current_paystack_reference', paystackData.reference);
 
-  showPayStep(3);
+  // Use Paystack Inline SDK
+  const handler = PaystackPop.setup({
+   key: PAYSTACK_PUBLIC_KEY,
+   email: customerEmail,
+    amount: Math.round(Number(total) * 100), // Paystack expects amount in pesewas for GHS
+    currency: CURRENCY,
+   ref: paystackData.reference,
+   onClose: function() {
+    showNotification('Payment cancelled', 'warning');
+    document.getElementById("paymentModal").classList.add("hidden");
+    resetCart();
+   },
+   onSuccess: async function(response) {
+    try {
+     document.getElementById("payProcessingText").textContent = "Verifying payment...";
+     showPayStep(2);
+     document.getElementById("paymentModal").classList.remove("hidden");
+     await delay(500);
 
-  document.getElementById("viewReceiptBtn").onclick = () => {
-   document.getElementById("paymentModal").classList.add("hidden");
-   showReceipt(receipt);
-  };
+     // Verify payment with backend
+     const verifyResult = await verifyPaystackPayment(response.reference);
 
-  document.getElementById("newSaleBtn").onclick = () => {
-   document.getElementById("paymentModal").classList.add("hidden");
-   resetCart();
-  };
+     if (verifyResult && verifyResult.success) {
+      // Payment verified - record it in our system
+      document.getElementById("payProcessingText").textContent = "Recording transaction...";
+      await delay(500);
 
-  resetCart();
+      await processPayment({
+       sale_id: sale.sale_id,
+       payment_method: "card",
+       amount_paid: total,
+       payment_details: {
+        processor: 'paystack',
+        reference: response.reference,
+        status: 'verified'
+       }
+      });
+
+      const receipt = await getReceipt(sale.sale_id);
+
+      document.getElementById("paySuccessDetail").textContent = "Payment verified! Transaction completed.";
+      showPayStep(3);
+
+      document.getElementById("viewReceiptBtn").onclick = () => {
+       document.getElementById("paymentModal").classList.add("hidden");
+       showReceipt(receipt);
+      };
+
+      document.getElementById("newSaleBtn").onclick = () => {
+       document.getElementById("paymentModal").classList.add("hidden");
+       resetCart();
+      };
+
+      resetCart();
+      sessionStorage.removeItem('current_sale_id');
+      sessionStorage.removeItem('current_paystack_reference');
+     } else {
+      throw new Error('Payment verification failed');
+     }
+    } catch (error) {
+     document.getElementById("paymentModal").classList.add("hidden");
+     showNotification(`Payment verification error: ${error.message}`, 'danger');
+     console.error('Paystack verification error:', error);
+     sessionStorage.removeItem('current_sale_id');
+     sessionStorage.removeItem('current_paystack_reference');
+    }
+   }
+  });
+  handler.openIframe();
+
  } catch (error) {
   document.getElementById("paymentModal").classList.add("hidden");
   showNotification(`Checkout error: ${error.message}`, "danger");
+  console.error('Checkout error:', error);
  }
 }
 
 function resetCart() {
  cart = [];
- document.getElementById("amountPaid").value = "";
  document.getElementById("discountAmount").value = "0";
  updateCartDisplay();
  loadDashboard();
 }
 
 function showPayStep(step) {
- // Updated to support Paystack step 1b
+ // Show/hide payment steps
  const stepElements = {
-  1: 'payStep1',
-  '1b': 'payStep1b',
   2: 'payStep2',
   3: 'payStep3'
  };
@@ -720,18 +734,18 @@ function formatReceipt(receipt) {
  html += "-".repeat(40) + "\n";
  receipt.items.forEach((item) => {
   html += `${item.name}\n`;
-  html += `  Qty: ${item.quantity} x $${item.unit_price} = $${item.total}\n`;
+  html += `  Qty: ${item.quantity} x ₵${item.unit_price} = ₵${item.total}\n`;
  });
  html += "\n" + "-".repeat(40) + "\n";
- html += `Subtotal: ${" ".repeat(28)}$${receipt.subtotal}\n`;
+ html += `Subtotal: ${" ".repeat(28)}₵${receipt.subtotal}\n`;
  if (parseFloat(receipt.discount) > 0) html += `Discount: ${" ".repeat(28)}$-${receipt.discount}\n`;
- if (parseFloat(receipt.tax) > 0) html += `Tax:      ${" ".repeat(28)}$${receipt.tax}\n`;
- html += `TOTAL:    ${" ".repeat(28)}$${receipt.total}\n`;
+ if (parseFloat(receipt.tax) > 0) html += `Tax:      ${" ".repeat(28)}₵${receipt.tax}\n`;
+ html += `TOTAL:    ${" ".repeat(28)}₵${receipt.total}\n`;
  html += "\n" + "-".repeat(40) + "\n";
  if (receipt.payment) {
   html += `Payment: ${receipt.payment.method.toUpperCase()}\n`;
-  html += `Paid:     ${" ".repeat(28)}$${receipt.payment.amount_paid}\n`;
-  html += `Change:   ${" ".repeat(28)}$${receipt.payment.change}\n`;
+  html += `Paid:     ${" ".repeat(28)}₵${receipt.payment.amount_paid}\n`;
+  html += `Change:   ${" ".repeat(28)}₵${receipt.payment.change}\n`;
  }
  html += "\n" + "=".repeat(40) + "\n";
  html += centerText("Thank You!", 40) + "\n";
@@ -763,7 +777,7 @@ function handleProductSearch(e) {
           unit_price: ${p.unit_price},
           quantity_on_hand: ${p.quantity_on_hand}
         }); document.getElementById('searchResults').classList.add('hidden'); document.getElementById('productSearch').value='';">
-          <strong>${p.product_name}</strong> — $${parseFloat(p.unit_price).toFixed(2)}
+          <strong>${p.product_name}</strong> — ₵${parseFloat(p.unit_price).toFixed(2)}
           <span style="float:right;color:var(--text-dim-val);font-size:12px;">Stock: ${p.quantity_on_hand}</span>
         </li>`,
    )
@@ -801,7 +815,7 @@ function renderProductsTable(products) {
         <td><strong>${p.product_name}</strong></td>
         <td style="color:var(--text-secondary)">${p.barcode || "—"}</td>
         <td><span class="status-badge status-ok">${p.category}</span></td>
-        <td><strong>$${parseFloat(p.unit_price).toFixed(2)}</strong></td>
+        <td><strong>₵${parseFloat(p.unit_price).toFixed(2)}</strong></td>
         <td>${stockBadge(p.quantity_on_hand, p.reorder_level)}</td>
         <td>
           <div class="table-actions">
@@ -1103,7 +1117,7 @@ function renderCustomersTable(customers) {
         <td><strong>${c.customer_name}</strong></td>
         <td style="color:var(--text-secondary)">${c.email || "—"}</td>
         <td style="color:var(--text-secondary)">${c.phone || "—"}</td>
-        <td><strong>$${parseFloat(c.total_purchases || 0).toFixed(2)}</strong></td>
+        <td><strong>₵${parseFloat(c.total_purchases || 0).toFixed(2)}</strong></td>
         <td><span class="status-badge status-ok">${c.loyalty_points || 0} pts</span></td>
         <td>
           <div class="table-actions">
@@ -1177,7 +1191,7 @@ async function viewCustomer(customerId) {
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);font-size:13px;">
         <span>${h.transaction_id || `Sale #${h.sale_id}`}</span>
         <span style="color:var(--text-secondary)">${formatDate(h.created_at || h.sale_date)}</span>
-        <span style="color:var(--accent);font-weight:700;">$${parseFloat(h.total_amount || 0).toFixed(2)}</span>
+        <span style="color:var(--accent);font-weight:700;">₵${parseFloat(h.total_amount || 0).toFixed(2)}</span>
       </div>`,
       )
       .join("")
@@ -1200,7 +1214,7 @@ async function viewCustomer(customerId) {
       </div>
       <div style="background:var(--bg-elevated);padding:12px;border-radius:8px;border:1px solid var(--border-color);">
         <p style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Total Purchases</p>
-        <p style="font-weight:700;color:var(--accent);font-size:18px;">$${parseFloat(customer.total_purchases || 0).toFixed(2)}</p>
+        <p style="font-weight:700;color:var(--accent);font-size:18px;">₵${parseFloat(customer.total_purchases || 0).toFixed(2)}</p>
       </div>
     </div>
     <div style="margin-bottom:16px;">
@@ -1259,7 +1273,7 @@ async function loadReports() {
   const dailyReport = await getDailySalesReport(today);
   document.getElementById("dailySalesReport").innerHTML = `
       <p style="font-size:22px;font-weight:700;font-family:'Syne',sans-serif;color:var(--accent);margin-bottom:4px;">
-        $${parseFloat(dailyReport.summary?.total_revenue || 0).toFixed(2)}
+        ₵${parseFloat(dailyReport.summary?.total_revenue || 0).toFixed(2)}
       </p>
       <p style="color:var(--text-secondary);font-size:13px;">${dailyReport.summary?.total_transactions || 0} transactions today</p>`;
 
@@ -1290,7 +1304,7 @@ async function loadReports() {
      (c) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-color);">
           <span style="font-size:13px;color:var(--text-primary);">${c.username}</span>
-          <span style="font-weight:700;color:var(--accent);">$${parseFloat(c.total_sales || 0).toFixed(2)}</span>
+          <span style="font-weight:700;color:var(--accent);">₵${parseFloat(c.total_sales || 0).toFixed(2)}</span>
         </div>`,
     )
     .join("") || '<p style="color:var(--text-secondary);font-size:13px;">No data yet</p>';
@@ -1628,7 +1642,7 @@ async function handleViewReportDetails(reportType) {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:24px;">
               <div style="background:var(--bg-elevated);padding:16px;border-radius:10px;border:1px solid var(--border-color);">
                 <p style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Total Sales</p>
-                <p style="font-size:24px;font-weight:700;color:var(--accent);">$${parseFloat(data.summary?.total_revenue || 0).toFixed(2)}</p>
+                <p style="font-size:24px;font-weight:700;color:var(--accent);">₵${parseFloat(data.summary?.total_revenue || 0).toFixed(2)}</p>
               </div>
               <div style="background:var(--bg-elevated);padding:16px;border-radius:10px;border:1px solid var(--border-color);">
                 <p style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Transactions</p>
@@ -1645,7 +1659,7 @@ async function handleViewReportDetails(reportType) {
                   (t) => `
                   <div style="padding:10px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;">
                     <span>#${t.transaction_id}</span>
-                    <span style="color:var(--accent);font-weight:700;">$${parseFloat(t.total_amount || 0).toFixed(2)}</span>
+                    <span style="color:var(--accent);font-weight:700;">₵${parseFloat(t.total_amount || 0).toFixed(2)}</span>
                   </div>`,
                  )
                  .join("")}
@@ -1670,7 +1684,7 @@ async function handleViewReportDetails(reportType) {
                 <div style="padding:12px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
                   <div>
                     <p style="font-weight:700;margin-bottom:2px;">${i + 1}. ${p.product_name}</p>
-                    <p style="font-size:12px;color:var(--text-secondary);">$${parseFloat(p.unit_price || 0).toFixed(2)} × ${p.total_quantity_sold}</p>
+                    <p style="font-size:12px;color:var(--text-secondary);">₵${parseFloat(p.unit_price || 0).toFixed(2)} × ${p.total_quantity_sold}</p>
                   </div>
                   <span style="background:var(--accent-dim);color:var(--accent);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${p.total_quantity_sold} sold</span>
                 </div>`,
@@ -1738,8 +1752,8 @@ async function handleViewReportDetails(reportType) {
                       <p style="font-size:12px;color:var(--text-secondary);">${c.transaction_count || 0} transactions</p>
                     </div>
                     <div style="text-align:right;">
-                      <p style="color:var(--accent);font-weight:700;">$${parseFloat(c.total_sales || 0).toFixed(2)}</p>
-                      <p style="font-size:12px;color:var(--text-secondary);">Avg: $${(parseFloat(c.total_sales || 0) / Math.max(c.transaction_count || 1, 1)).toFixed(2)}</p>
+                      <p style="color:var(--accent);font-weight:700;">₵${parseFloat(c.total_sales || 0).toFixed(2)}</p>
+                      <p style="font-size:12px;color:var(--text-secondary);">Avg: ₵${(parseFloat(c.total_sales || 0) / Math.max(c.transaction_count || 1, 1)).toFixed(2)}</p>
                     </div>
                   </div>`,
                  )
@@ -1785,14 +1799,14 @@ function showNotification(message, type = "info") {
 function formatCurrency(amount, compact = false) {
  const num = parseFloat(amount || 0);
  if (compact || num >= 10000) return formatCompactCurrency(num);
- return `$${num.toFixed(2)}`;
+ return `₵${num.toFixed(2)}`;
 }
 
 function formatCompactCurrency(num) {
- if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(1)}B`;
- if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
- if (num >= 10_000) return `$${(num / 1_000).toFixed(1)}K`;
- return `$${num.toFixed(2)}`;
+ if (num >= 1_000_000_000) return `₵${(num / 1_000_000_000).toFixed(1)}B`;
+ if (num >= 1_000_000) return `₵${(num / 1_000_000).toFixed(1)}M`;
+ if (num >= 10_000) return `₵${(num / 1_000).toFixed(1)}K`;
+ return `₵${num.toFixed(2)}`;
 }
 
 function formatDate(dateString) {
@@ -1955,112 +1969,3 @@ function updateRoleInfo() {
 window.viewCustomer = viewCustomer;
 window.openEditCustomerModal = openEditCustomerModal;
 window.handleDeleteCustomer = handleDeleteCustomer;
-
-// ==================== PAYSTACK INTEGRATION ====================
-
-async function handlePaystackContinue() {
- const email = document.getElementById('paystackCustomerEmail').value;
-
- if (!email || !email.includes('@')) {
-  showNotification('Please enter a valid email address', 'warning');
-  return;
- }
-
- const { total, paymentMethod } = window.paystackCheckoutData;
-
- showPayStep(2);
- document.getElementById('payProcessingText').textContent = 'Creating sale...';
- await delay(500);
-
- try {
-  // Create the sale
-  const saleData = {
-   items: cart.map((item) => ({
-    product_id: item.product_id,
-    quantity: item.quantity,
-    unit_price: parseFloat(item.unit_price),
-   })),
-   customer_id: document.getElementById('customerSelect').value || null,
-   discount_amount: parseFloat(document.getElementById('discountAmount').value) || 0,
-   tax_rate: TAX_RATE,
-   payment_method: paymentMethod,
-   amount_paid: total,
-  };
-
-  const sale = await createSale(saleData);
-  document.getElementById('payProcessingText').textContent = 'Initializing Paystack...';
-  await delay(500);
-
-  // Initialize Paystack payment
-  const paystackData = await initializePaystackPayment({
-   sale_id: sale.sale_id,
-   customer_email: email,
-   amount_paid: total,
-   customer_name: document.getElementById('customerSelect').value ? 
-    document.querySelector(`#customerSelect option[value="${document.getElementById('customerSelect').value}"]`)?.textContent : 
-    'Customer',
-   customer_phone: ''
-  });
-
-  // Store the sale ID for verification after return
-  localStorage.setItem('pending_paystack_sale_id', sale.sale_id);
-
-  document.getElementById('payProcessingText').textContent = 'Redirecting to Paystack...';
-  await delay(1000);
-
-  // Redirect to Paystack checkout
-  window.location.href = paystackData.authorization_url;
- } catch (error) {
-  document.getElementById("paymentModal").classList.add("hidden");
-  showNotification(`Error processing Paystack payment: ${error.message}`, 'danger');
-  console.error('Paystack error:', error);
- }
-}
-
-async function handlePaystackReturn(reference) {
- try {
-  const saleId = localStorage.getItem('pending_paystack_sale_id');
-
-  if (!saleId) {
-   showNotification('Payment reference not found. Please try again.', 'danger');
-   return;
-  }
-
-  showPayStep(2);
-  document.getElementById("paymentModal").classList.remove("hidden");
-  document.getElementById('payProcessingText').textContent = 'Verifying Paystack payment...';
-  await delay(1000);
-
-  // Verify the payment
-  const result = await verifyPaystackPayment(reference);
-
-  if (result && result.success) {
-   const receipt = await getReceipt(saleId);
-
-   document.getElementById('paySuccessDetail').textContent = 'Payment verified successfully! Transaction completed.';
-   showPayStep(3);
-
-   document.getElementById('viewReceiptBtn').onclick = () => {
-    document.getElementById('paymentModal').classList.add('hidden');
-    showReceipt(receipt);
-   };
-
-   document.getElementById('newSaleBtn').onclick = () => {
-    document.getElementById('paymentModal').classList.add('hidden');
-    resetCart();
-   };
-
-   resetCart();
-  } else {
-   throw new Error('Payment verification failed');
-  }
-
-  // Clean up
-  localStorage.removeItem('pending_paystack_sale_id');
- } catch (error) {
-  document.getElementById("paymentModal").classList.add("hidden");
-  showNotification(`Payment verification error: ${error.message}`, 'danger');
-  console.error('Paystack verification error:', error);
-  localStorage.removeItem('pending_paystack_sale_id');
- }
-}

@@ -96,7 +96,7 @@ CREATE TABLE sales_items (
 CREATE TABLE payments (
   payment_id SERIAL PRIMARY KEY,
   sale_id INT NOT NULL UNIQUE REFERENCES sales(sale_id) ON DELETE CASCADE,
-  payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash', 'mobile_money', 'card', 'split')),
+  payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash', 'mobile_money', 'card', 'split', 'paystack')),
   amount_paid DECIMAL(12, 2) NOT NULL CHECK (amount_paid > 0),
   change_amount DECIMAL(10, 2) DEFAULT 0 CHECK (change_amount >= 0),
   payment_status VARCHAR(20) DEFAULT 'completed' CHECK (payment_status IN ('completed', 'pending', 'failed')),
