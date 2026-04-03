@@ -642,14 +642,19 @@ async function processCheckout(total) {
        }
       });
 
-      const receipt = await getReceipt(sale.sale_id);
+      document.getElementById("payProcessingText").textContent = "Preparing receipt...";
+      const receipt = await getReceiptWithRetry(sale.sale_id);
 
       document.getElementById("paySuccessDetail").textContent = "Payment verified! Transaction completed.";
       showPayStep(3);
 
-      document.getElementById("viewReceiptBtn").onclick = () => {
+      const openReceipt = () => {
        document.getElementById("paymentModal").classList.add("hidden");
        showReceipt(receipt);
+      };
+
+      document.getElementById("viewReceiptBtn").onclick = () => {
+       openReceipt();
       };
 
       document.getElementById("newSaleBtn").onclick = () => {
@@ -657,6 +662,8 @@ async function processCheckout(total) {
        resetCart();
       };
 
+      // Open receipt immediately after successful verification.
+      openReceipt();
       resetCart();
       sessionStorage.removeItem('current_sale_id');
       sessionStorage.removeItem('current_paystack_reference');
@@ -705,6 +712,23 @@ function showPayStep(step) {
 
 function delay(ms) {
  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getReceiptWithRetry(saleId, retries = 5, waitMs = 400) {
+ let lastError;
+
+ for (let attempt = 1; attempt <= retries; attempt++) {
+  try {
+   return await getReceipt(saleId);
+  } catch (error) {
+   lastError = error;
+   if (attempt < retries) {
+    await delay(waitMs * attempt);
+   }
+  }
+ }
+
+ throw lastError || new Error("Failed to load receipt");
 }
 
 function showReceipt(receipt) {
@@ -1338,32 +1362,22 @@ async function loadReportsCharts() {
 
 async function renderDailySalesTrendChart(startDate, endDate) {
  try {
-  const today = new Date().toISOString().split("T")[0];
-  const data = await getDailySalesReport(today);
+  const data = await getWeeklySalesReport();
   const ctx = document.getElementById("dailySalesChart");
   
-  if (!ctx || !data.transactions || data.transactions.length === 0) {
+  if (!ctx || !Array.isArray(data) || data.length === 0) {
    if (ctx) {
-    ctx.parentElement.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);">No transactions today</div>';
+    ctx.parentElement.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);">No sales data available</div>';
    }
    return;
   }
 
-  // Group transactions by hour
-  const hourlyData = {};
-  for (let i = 0; i < 24; i++) {
-   hourlyData[i] = { count: 0, total: 0 };
-  }
-
-  data.transactions.forEach(t => {
-   const hour = new Date(t.created_at).getHours();
-   hourlyData[hour].count++;
-   hourlyData[hour].total += parseFloat(t.total_amount || 0);
-  });
-
-  const labels = Object.keys(hourlyData).map(h => `${h.toString().padStart(2, '0')}:00`);
-  const salesData = Object.values(hourlyData).map(h => h.total);
-  const transactionCounts = Object.values(hourlyData).map(h => h.count);
+  const weeklySorted = [...data].sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
+  const labels = weeklySorted.map((d) =>
+   new Date(d.sale_date).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }),
+  );
+  const salesData = weeklySorted.map((d) => parseFloat(d.total_sales || 0));
+  const transactionCounts = weeklySorted.map((d) => parseInt(d.transaction_count || 0, 10));
 
   new Chart(ctx, {
    type: "line",
@@ -1414,7 +1428,7 @@ async function renderDailySalesTrendChart(startDate, endDate) {
       ticks: {
        color: "var(--text-secondary)",
        callback: function(value) {
-        return "$" + value.toLocaleString();
+          return "₵" + Number(value).toLocaleString();
        }
       },
       grid: {
@@ -1465,7 +1479,7 @@ async function renderTopProductsChart(startDate, endDate) {
     labels,
     datasets: [
      {
-      label: "Revenue ($)",
+      label: "Revenue (₵)",
       data: revenues,
       backgroundColor: "var(--accent)",
       borderRadius: 5,
@@ -1488,7 +1502,7 @@ async function renderTopProductsChart(startDate, endDate) {
       ticks: {
        color: "var(--text-secondary)",
        callback: function(value) {
-        return "$" + value.toLocaleString();
+          return "₵" + Number(value).toLocaleString();
        }
       },
       grid: {
@@ -1605,7 +1619,7 @@ async function renderCashierPerformanceChart(startDate, endDate) {
       ticks: {
        color: "var(--text-secondary)",
        callback: function(value) {
-        return "$" + value.toLocaleString();
+          return "₵" + Number(value).toLocaleString();
        }
       },
       grid: {
