@@ -8,12 +8,14 @@
 let cart = [];
 const TAX_RATE = 0.1;
 const CURRENCY = "GHS";
+const APP_VERSION = "20260405";
 
 // ============================================
 // PAGE NAVIGATION & INITIALIZATION
 // ============================================
 
 document.addEventListener("DOMContentLoaded", function () {
+ console.log("NEXUS POS frontend version:", APP_VERSION);
  initializeTheme();
  initializeEventListeners();
  checkAuthentication();
@@ -134,22 +136,22 @@ function initializeEventListeners() {
  document.getElementById("inventoryTable")?.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-inventory-id]");
   if (!btn) return;
-  
+
   const productId = Number(btn.dataset.inventoryId);
   if (Number.isNaN(productId)) {
    console.error("Invalid product ID:", btn.dataset.inventoryId);
    return;
   }
-  
+
   const action = btn.dataset.action;
   if (action !== "adjust-inventory") return;
-  
+
   // Extract data from button attributes (cleaner approach)
   const productName = btn.dataset.productName || "";
   const currentQty = parseInt(btn.dataset.currentQty) || 0;
-  
+
   console.log("Adjust inventory clicked - Product ID:", productId, "Name:", productName, "Current Qty:", currentQty);
-  
+
   e.preventDefault();
   adjustInventoryModal(productId, productName, currentQty);
  });
@@ -538,7 +540,7 @@ function handleCheckout() {
  // Show processing modal
  showPayStep(2);
  document.getElementById("paymentModal").classList.remove("hidden");
- 
+
  // Directly process checkout - Paystack will handle everything
  processCheckout(total);
 }
@@ -557,7 +559,7 @@ async function processCheckout(total) {
    customer_id: document.getElementById("customerSelect").value || null,
    discount_amount: parseFloat(document.getElementById("discountAmount").value) || 0,
    tax_rate: TAX_RATE,
-   payment_method: "card", // Will be determined by Paystack, using card as default
+   payment_method: "card",
    amount_paid: total,
   };
 
@@ -572,8 +574,7 @@ async function processCheckout(total) {
   // Build a guaranteed-valid email for Paystack transaction init
   let customerEmail = "";
   const customerSelect = document.getElementById("customerSelect");
-  
-  // Generate a valid email for Paystack (uses example.com format)
+
   if (customerSelect.value) {
    customerEmail = `customer${customerSelect.value}@example.com`;
   } else {
@@ -591,100 +592,129 @@ async function processCheckout(total) {
    sale_id: sale.sale_id,
    customer_email: customerEmail,
    amount_paid: total,
-   customer_name: customerSelect.value ? 
-    document.querySelector(`#customerSelect option[value="${customerSelect.value}"]`)?.textContent : 
-    'Customer',
-   customer_phone: ''
+   customer_name: customerSelect.value
+    ? document.querySelector(`#customerSelect option[value="${customerSelect.value}"]`)?.textContent
+    : "Customer",
+   customer_phone: "",
   });
 
   document.getElementById("payProcessingText").textContent = "Opening Paystack checkout...";
   await delay(500);
 
   // Store sale ID for later verification
-  sessionStorage.setItem('current_sale_id', sale.sale_id);
-  sessionStorage.setItem('current_paystack_reference', paystackData.reference);
+  sessionStorage.setItem("current_sale_id", sale.sale_id);
+  sessionStorage.setItem("current_paystack_reference", paystackData.reference);
 
-  // Use Paystack Inline SDK
+  let hasFinalizedPayment = false;
+
+  const finalizeVerifiedPayment = async (reference) => {
+   if (hasFinalizedPayment) return;
+   hasFinalizedPayment = true;
+
+   document.getElementById("payProcessingText").textContent = "Verifying payment...";
+   showPayStep(2);
+   document.getElementById("paymentModal").classList.remove("hidden");
+   await delay(400);
+
+   const verifyResult = await verifyPaystackPayment(reference);
+   if (!verifyResult || !verifyResult.success) {
+    throw new Error("Payment verification failed");
+   }
+
+   document.getElementById("payProcessingText").textContent = "Recording transaction...";
+   await delay(300);
+
+   await processPayment({
+    sale_id: sale.sale_id,
+    payment_method: "card",
+    amount_paid: total,
+    payment_details: {
+     processor: "paystack",
+     reference,
+     status: "verified",
+    },
+   });
+
+   document.getElementById("payProcessingText").textContent = "Preparing receipt...";
+   const receipt = await getReceiptWithRetry(sale.sale_id);
+
+   document.getElementById("paySuccessDetail").textContent = "Payment verified! Transaction completed.";
+
+   // Inject a receipt preview directly inside the success step
+   let receiptPreviewEl = document.getElementById("inlineReceiptPreview");
+   if (!receiptPreviewEl) {
+    receiptPreviewEl = document.createElement("div");
+    receiptPreviewEl.id = "inlineReceiptPreview";
+    receiptPreviewEl.style.cssText =
+     "margin:16px 0;max-height:340px;overflow-y:auto;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-elevated);";
+    document
+     .getElementById("payStep3")
+     .querySelector("div")
+     .insertBefore(receiptPreviewEl, document.getElementById("viewReceiptBtn").parentElement);
+   }
+   receiptPreviewEl.innerHTML = formatReceipt(receipt);
+
+   showPayStep(3);
+
+   sessionStorage.removeItem("current_sale_id");
+   sessionStorage.removeItem("current_paystack_reference");
+
+   document.getElementById("viewReceiptBtn").textContent = "🖨 Print Receipt";
+   document.getElementById("viewReceiptBtn").onclick = function () {
+    printReceipt(receipt);
+   };
+
+   document.getElementById("newSaleBtn").onclick = function () {
+    document.getElementById("paymentModal").classList.add("hidden");
+    if (receiptPreviewEl) receiptPreviewEl.remove();
+    resetCart();
+   };
+  };
+
+  // ── FIX: Paystack v1 inline SDK requires plain synchronous functions for
+  //         onClose and callback. Async work is fire-and-forgotten with
+  //         .catch() so the SDK never receives a Promise return value. ──
   const handler = PaystackPop.setup({
    key: PAYSTACK_PUBLIC_KEY,
    email: customerEmail,
-    amount: Math.round(Number(total) * 100), // Paystack expects amount in pesewas for GHS
-    currency: CURRENCY,
+   amount: Math.round(Number(total) * 100), // pesewas
+   currency: CURRENCY,
    ref: paystackData.reference,
-   onClose: function() {
-    showNotification('Payment cancelled', 'warning');
-    document.getElementById("paymentModal").classList.add("hidden");
-    resetCart();
-   },
-   onSuccess: async function(response) {
-    try {
-     document.getElementById("payProcessingText").textContent = "Verifying payment...";
-     showPayStep(2);
-     document.getElementById("paymentModal").classList.remove("hidden");
-     await delay(500);
 
-     // Verify payment with backend
-     const verifyResult = await verifyPaystackPayment(response.reference);
-
-     if (verifyResult && verifyResult.success) {
-      // Payment verified - record it in our system
-      document.getElementById("payProcessingText").textContent = "Recording transaction...";
-      await delay(500);
-
-      await processPayment({
-       sale_id: sale.sale_id,
-       payment_method: "card",
-       amount_paid: total,
-       payment_details: {
-        processor: 'paystack',
-        reference: response.reference,
-        status: 'verified'
-       }
-      });
-
-      document.getElementById("payProcessingText").textContent = "Preparing receipt...";
-      const receipt = await getReceiptWithRetry(sale.sale_id);
-
-      document.getElementById("paySuccessDetail").textContent = "Payment verified! Transaction completed.";
-      showPayStep(3);
-
-      const openReceipt = () => {
-       document.getElementById("paymentModal").classList.add("hidden");
-       showReceipt(receipt);
-      };
-
-      document.getElementById("viewReceiptBtn").onclick = () => {
-       openReceipt();
-      };
-
-      document.getElementById("newSaleBtn").onclick = () => {
-       document.getElementById("paymentModal").classList.add("hidden");
-       resetCart();
-      };
-
-      // Open receipt immediately after successful verification.
-      openReceipt();
-      resetCart();
-      sessionStorage.removeItem('current_sale_id');
-      sessionStorage.removeItem('current_paystack_reference');
-     } else {
-      throw new Error('Payment verification failed');
-     }
-    } catch (error) {
+   onClose: function () {
+    if (hasFinalizedPayment) return;
+    const fallbackReference = sessionStorage.getItem("current_paystack_reference");
+    if (fallbackReference) {
+     document.getElementById("payProcessingText").textContent = "Confirming payment status...";
+     finalizeVerifiedPayment(fallbackReference).catch(function (error) {
+      showNotification("Payment status check failed: " + error.message, "danger");
+      console.error("Paystack close verification error:", error);
+     });
+    } else {
+     showNotification("Payment cancelled", "warning");
      document.getElementById("paymentModal").classList.add("hidden");
-     showNotification(`Payment verification error: ${error.message}`, 'danger');
-     console.error('Paystack verification error:', error);
-     sessionStorage.removeItem('current_sale_id');
-     sessionStorage.removeItem('current_paystack_reference');
+     resetCart();
+     sessionStorage.removeItem("current_sale_id");
+     sessionStorage.removeItem("current_paystack_reference");
     }
-   }
-  });
-  handler.openIframe();
+   },
 
+   callback: function (response) {
+    finalizeVerifiedPayment(response.reference).catch(function (error) {
+     document.getElementById("paymentModal").classList.add("hidden");
+     showNotification("Payment verification error: " + error.message, "danger");
+     console.error("Paystack verification error:", error);
+     sessionStorage.removeItem("current_sale_id");
+     sessionStorage.removeItem("current_paystack_reference");
+    });
+   },
+  });
+
+  handler.openIframe();
  } catch (error) {
   document.getElementById("paymentModal").classList.add("hidden");
   showNotification(`Checkout error: ${error.message}`, "danger");
-  console.error('Checkout error:', error);
+  console.error("Checkout error:", error);
  }
 }
 
@@ -696,16 +726,15 @@ function resetCart() {
 }
 
 function showPayStep(step) {
- // Show/hide payment steps
  const stepElements = {
-  2: 'payStep2',
-  3: 'payStep3'
+  2: "payStep2",
+  3: "payStep3",
  };
 
- Object.keys(stepElements).forEach(key => {
+ Object.keys(stepElements).forEach((key) => {
   const elem = document.getElementById(stepElements[key]);
   if (elem) {
-   elem.classList.toggle('hidden', key !== String(step));
+   elem.classList.toggle("hidden", key !== String(step));
   }
  });
 }
@@ -736,7 +765,9 @@ function showReceipt(receipt) {
  receiptContent.innerHTML = formatReceipt(receipt);
  document.getElementById("receiptModal").classList.remove("hidden");
 
- document.getElementById("printReceiptBtn").onclick = () => window.print();
+ document.getElementById("printReceiptBtn").onclick = function () {
+  printReceipt(receipt);
+ };
  document.getElementById("emailReceiptBtn").onclick = () => showNotification("Email feature coming soon", "info");
  document.getElementById("closeReceiptBtn").onclick = () => {
   document.getElementById("receiptModal").classList.add("hidden");
@@ -745,37 +776,190 @@ function showReceipt(receipt) {
 }
 
 function formatReceipt(receipt) {
- let html = "<pre>";
- html += "=".repeat(40) + "\n";
- html += centerText(receipt.store_name, 40) + "\n";
- html += "=".repeat(40) + "\n";
- html += `Transaction: ${receipt.transaction_id}\n`;
- html += `Date: ${receipt.date} ${receipt.time}\n`;
- html += `Cashier: ${receipt.cashier}\n`;
- if (receipt.customer) html += `Customer: ${receipt.customer.name}\n`;
- html += "\n" + "-".repeat(40) + "\n";
- html += "ITEMS\n";
- html += "-".repeat(40) + "\n";
- receipt.items.forEach((item) => {
-  html += `${item.name}\n`;
-  html += `  Qty: ${item.quantity} x ₵${item.unit_price} = ₵${item.total}\n`;
- });
- html += "\n" + "-".repeat(40) + "\n";
- html += `Subtotal: ${" ".repeat(28)}₵${receipt.subtotal}\n`;
- if (parseFloat(receipt.discount) > 0) html += `Discount: ${" ".repeat(28)}$-${receipt.discount}\n`;
- if (parseFloat(receipt.tax) > 0) html += `Tax:      ${" ".repeat(28)}₵${receipt.tax}\n`;
- html += `TOTAL:    ${" ".repeat(28)}₵${receipt.total}\n`;
- html += "\n" + "-".repeat(40) + "\n";
- if (receipt.payment) {
-  html += `Payment: ${receipt.payment.method.toUpperCase()}\n`;
-  html += `Paid:     ${" ".repeat(28)}₵${receipt.payment.amount_paid}\n`;
-  html += `Change:   ${" ".repeat(28)}₵${receipt.payment.change}\n`;
- }
- html += "\n" + "=".repeat(40) + "\n";
- html += centerText("Thank You!", 40) + "\n";
- html += "=".repeat(40) + "\n";
- html += "</pre>";
- return html;
+ const discount = parseFloat(receipt.discount || 0);
+ const tax = parseFloat(receipt.tax || 0);
+
+ const itemsHtml = (receipt.items || [])
+  .map(
+   (item) => `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px dashed #ddd;">
+   <div style="flex:1;">
+    <div style="font-weight:600;font-size:13px;">${item.name}</div>
+    <div style="font-size:12px;color:#666;">Qty: ${item.quantity} × ₵${parseFloat(item.unit_price).toFixed(2)}</div>
+   </div>
+   <div style="font-weight:700;font-size:13px;white-space:nowrap;margin-left:12px;">₵${parseFloat(item.total).toFixed(2)}</div>
+  </div>`,
+  )
+  .join("");
+
+ return `
+  <div style="font-family:'Courier New',monospace;max-width:320px;margin:0 auto;padding:16px;">
+   <div style="text-align:center;margin-bottom:16px;">
+    <div style="font-size:20px;font-weight:800;letter-spacing:2px;">${receipt.store_name || "NEXUS POS"}</div>
+    <div style="font-size:11px;color:#666;margin-top:4px;">${receipt.date || ""} ${receipt.time || ""}</div>
+    <div style="font-size:11px;color:#666;">Cashier: ${receipt.cashier || "—"}</div>
+    ${receipt.customer ? `<div style="font-size:11px;color:#666;">Customer: ${receipt.customer.name}</div>` : ""}
+   </div>
+
+   <div style="border-top:2px solid #333;border-bottom:2px solid #333;padding:4px 0;margin-bottom:8px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#999;text-align:center;">TRANSACTION: ${receipt.transaction_id || "—"}</div>
+   </div>
+
+   <div style="margin-bottom:12px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#999;margin-bottom:6px;">ITEMS</div>
+    ${itemsHtml}
+   </div>
+
+   <div style="border-top:1px solid #ddd;padding-top:10px;">
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">
+     <span>Subtotal</span><span>₵${parseFloat(receipt.subtotal || 0).toFixed(2)}</span>
+    </div>
+    ${
+     discount > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:#e53e3e;">
+     <span>Discount</span><span>-₵${discount.toFixed(2)}</span>
+    </div>`
+      : ""
+    }
+    ${
+     tax > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:#666;">
+     <span>Tax (10%)</span><span>₵${tax.toFixed(2)}</span>
+    </div>`
+      : ""
+    }
+    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding:8px 0;border-top:2px solid #333;margin-top:6px;">
+     <span>TOTAL</span><span>₵${parseFloat(receipt.total || 0).toFixed(2)}</span>
+    </div>
+   </div>
+
+   ${
+    receipt.payment
+     ? `
+   <div style="background:#f7f7f7;border-radius:6px;padding:10px;margin-top:10px;font-size:12px;">
+    <div style="display:flex;justify-content:space-between;padding:2px 0;">
+     <span style="color:#666;">Payment Method</span>
+     <span style="font-weight:700;text-transform:uppercase;">${receipt.payment.method || "—"}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:2px 0;">
+     <span style="color:#666;">Amount Paid</span>
+     <span style="font-weight:700;">₵${parseFloat(receipt.payment.amount_paid || 0).toFixed(2)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:2px 0;">
+     <span style="color:#666;">Change</span>
+     <span style="font-weight:700;">₵${parseFloat(receipt.payment.change || 0).toFixed(2)}</span>
+    </div>
+   </div>`
+     : ""
+   }
+
+   <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px dashed #ddd;">
+    <div style="font-size:13px;font-weight:700;">Thank You!</div>
+    <div style="font-size:11px;color:#999;margin-top:2px;">Please come again</div>
+   </div>
+  </div>`;
+}
+
+function printReceipt(receipt) {
+ const discount = parseFloat(receipt.discount || 0);
+ const tax = parseFloat(receipt.tax || 0);
+
+ const itemsHtml = (receipt.items || [])
+  .map(
+   (item) => `
+  <tr>
+   <td style="padding:6px 0;border-bottom:1px dashed #ccc;">${item.name}<br>
+    <small style="color:#666;">Qty: ${item.quantity} × ₵${parseFloat(item.unit_price).toFixed(2)}</small>
+   </td>
+   <td style="padding:6px 0;border-bottom:1px dashed #ccc;text-align:right;font-weight:700;">₵${parseFloat(item.total).toFixed(2)}</td>
+  </tr>`,
+  )
+  .join("");
+
+ const printHtml = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+   <meta charset="UTF-8">
+   <title>Receipt — ${receipt.transaction_id || ""}</title>
+   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 13px; color: #000; width: 80mm; margin: 0 auto; padding: 8px; }
+    .center { text-align: center; }
+    .store-name { font-size: 18px; font-weight: 900; letter-spacing: 3px; }
+    .divider { border: none; border-top: 2px solid #000; margin: 8px 0; }
+    .divider-dashed { border: none; border-top: 1px dashed #999; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    .totals td { padding: 3px 0; }
+    .total-row td { font-size: 15px; font-weight: 900; border-top: 2px solid #000; padding-top: 6px; }
+    .payment-box { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin-top: 8px; }
+    .payment-box td { padding: 2px 0; font-size: 12px; }
+    .thank-you { font-size: 14px; font-weight: 700; }
+    @media print {
+     body { width: 100%; }
+     @page { margin: 4mm; size: 80mm auto; }
+    }
+   </style>
+  </head>
+  <body>
+   <div class="center" style="margin-bottom:10px;">
+    <div class="store-name">${receipt.store_name || "NEXUS POS"}</div>
+    <div style="font-size:11px;color:#555;margin-top:4px;">${receipt.date || ""} ${receipt.time || ""}</div>
+    <div style="font-size:11px;color:#555;">Cashier: ${receipt.cashier || "—"}</div>
+    ${receipt.customer ? `<div style="font-size:11px;color:#555;">Customer: ${receipt.customer.name}</div>` : ""}
+   </div>
+
+   <hr class="divider">
+   <div class="center" style="font-size:10px;letter-spacing:1px;color:#777;margin-bottom:4px;">TXN: ${receipt.transaction_id || "—"}</div>
+   <hr class="divider">
+
+   <div style="font-size:10px;letter-spacing:1px;color:#999;margin-bottom:4px;">ITEMS</div>
+   <table>${itemsHtml}</table>
+
+   <hr class="divider" style="margin-top:10px;">
+   <table class="totals">
+    <tr>
+     <td>Subtotal</td>
+     <td style="text-align:right;">₵${parseFloat(receipt.subtotal || 0).toFixed(2)}</td>
+    </tr>
+    ${discount > 0 ? `<tr><td>Discount</td><td style="text-align:right;color:#c00;">-₵${discount.toFixed(2)}</td></tr>` : ""}
+    ${tax > 0 ? `<tr><td>Tax (10%)</td><td style="text-align:right;">₵${tax.toFixed(2)}</td></tr>` : ""}
+    <tr class="total-row">
+     <td>TOTAL</td>
+     <td style="text-align:right;">₵${parseFloat(receipt.total || 0).toFixed(2)}</td>
+    </tr>
+   </table>
+
+   ${
+    receipt.payment
+     ? `
+   <div class="payment-box">
+    <table>
+     <tr><td>Payment</td><td style="text-align:right;font-weight:700;text-transform:uppercase;">${receipt.payment.method || "—"}</td></tr>
+     <tr><td>Paid</td><td style="text-align:right;font-weight:700;">₵${parseFloat(receipt.payment.amount_paid || 0).toFixed(2)}</td></tr>
+     <tr><td>Change</td><td style="text-align:right;font-weight:700;">₵${parseFloat(receipt.payment.change || 0).toFixed(2)}</td></tr>
+    </table>
+   </div>`
+     : ""
+   }
+
+   <hr class="divider-dashed" style="margin-top:12px;">
+   <div class="center" style="margin-top:8px;">
+    <div class="thank-you">Thank You!</div>
+    <div style="font-size:11px;color:#999;margin-top:2px;">Please come again</div>
+   </div>
+  </body>
+  </html>`;
+
+ const printWindow = window.open("", "_blank", "width=400,height=600");
+ printWindow.document.write(printHtml);
+ printWindow.document.close();
+ printWindow.focus();
+ // Small delay to ensure content is rendered before printing
+ setTimeout(function () {
+  printWindow.print();
+  printWindow.close();
+ }, 300);
 }
 
 function centerText(text, width) {
@@ -939,9 +1123,9 @@ function renderInventoryTable(inventory) {
    '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px;">No inventory data found.</td></tr>';
   return;
  }
- 
+
  console.log("Rendering inventory with items:", inventory);
- 
+
  tbody.innerHTML = inventory
   .map((item) => {
    const qty = item.quantity_on_hand || 0;
@@ -950,10 +1134,9 @@ function renderInventoryTable(inventory) {
    const isLow = !isOut && qty <= reorder;
    const statusClass = isOut ? "status-out" : isLow ? "status-low" : "status-ok";
    const statusLabel = isOut ? "Out of Stock" : isLow ? "Low Stock" : "OK";
-   
-   // Ensure product_id is properly set for data attribute
+
    const productId = item.product_id || item.id;
-   
+
    const html = `
         <tr>
           <td><strong>${item.product_name}</strong></td>
@@ -975,13 +1158,12 @@ function renderInventoryTable(inventory) {
             </div>
           </td>
         </tr>`;
-   
-   console.log("Item product_id:", productId, "product_name:", item.product_name, "HTML rendered:", html);
+
+   console.log("Item product_id:", productId, "product_name:", item.product_name);
    return html;
   })
   .join("");
-  
- console.log("Final tbody HTML:", tbody.innerHTML);
+
  console.log("Total rows rendered:", tbody.querySelectorAll("tr").length);
 }
 
@@ -1108,7 +1290,6 @@ async function loadCustomers() {
  }
 }
 
-// Live search filter for customers
 async function handleCustomerSearch(e) {
  const query = e.target.value.trim().toLowerCase();
  try {
@@ -1337,23 +1518,15 @@ async function loadReports() {
  }
 }
 
-// Initialize and render all charts
 async function loadReportsCharts() {
  try {
   const today = new Date();
   const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const todayStr = today.toISOString().split("T")[0];
 
-  // Daily Sales Trend
   await renderDailySalesTrendChart(sevenDaysAgo, todayStr);
-
-  // Top Products
   await renderTopProductsChart(todayStr, todayStr);
-
-  // Inventory Distribution
   await renderInventoryChart();
-
-  // Cashier Performance
   await renderCashierPerformanceChart(todayStr, todayStr);
  } catch (error) {
   console.error("Error loading charts:", error);
@@ -1364,10 +1537,11 @@ async function renderDailySalesTrendChart(startDate, endDate) {
  try {
   const data = await getWeeklySalesReport();
   const ctx = document.getElementById("dailySalesChart");
-  
+
   if (!ctx || !Array.isArray(data) || data.length === 0) {
    if (ctx) {
-    ctx.parentElement.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);">No sales data available</div>';
+    ctx.parentElement.innerHTML =
+     '<div style="text-align:center; padding:40px; color:var(--text-secondary);">No sales data available</div>';
    }
    return;
   }
@@ -1406,8 +1580,8 @@ async function renderDailySalesTrendChart(startDate, endDate) {
       tension: 0.4,
       yAxisID: "y1",
       pointRadius: 4,
-     }
-    ]
+     },
+    ],
    },
    options: {
     responsive: true,
@@ -1419,43 +1593,43 @@ async function renderDailySalesTrendChart(startDate, endDate) {
        color: "var(--text-secondary)",
        usePointStyle: true,
        padding: 20,
-      }
-     }
+      },
+     },
     },
     scales: {
      y: {
       beginAtZero: true,
       ticks: {
        color: "var(--text-secondary)",
-       callback: function(value) {
-          return "₵" + Number(value).toLocaleString();
-       }
+       callback: function (value) {
+        return "₵" + Number(value).toLocaleString();
+       },
       },
       grid: {
-       color: "var(--border-color)"
-      }
+       color: "var(--border-color)",
+      },
      },
      y1: {
       type: "linear",
       position: "right",
       beginAtZero: true,
       ticks: {
-       color: "rgba(100, 200, 255, 0.7)"
+       color: "rgba(100, 200, 255, 0.7)",
       },
       grid: {
-       display: false
-      }
+       display: false,
+      },
      },
      x: {
       ticks: {
-       color: "var(--text-secondary)"
+       color: "var(--text-secondary)",
       },
       grid: {
-       color: "var(--border-color)"
-      }
-     }
-    }
-   }
+       color: "var(--border-color)",
+      },
+     },
+    },
+   },
   });
  } catch (error) {
   console.error("Error rendering daily sales chart:", error);
@@ -1466,12 +1640,11 @@ async function renderTopProductsChart(startDate, endDate) {
  try {
   const data = await getTopProductsReport(startDate, endDate, 8);
   const ctx = document.getElementById("topProductsChart");
-  
+
   if (!ctx) return;
 
-  const labels = data.slice(0, 8).map(p => p.product_name);
-  const quantities = data.slice(0, 8).map(d => d.total_quantity_sold || 0);
-  const revenues = data.slice(0, 8).map(d => parseFloat(d.total_revenue || 0));
+  const labels = data.slice(0, 8).map((p) => p.product_name);
+  const revenues = data.slice(0, 8).map((d) => parseFloat(d.total_revenue || 0));
 
   new Chart(ctx, {
    type: "bar",
@@ -1484,8 +1657,8 @@ async function renderTopProductsChart(startDate, endDate) {
       backgroundColor: "var(--accent)",
       borderRadius: 5,
       borderSkipped: false,
-     }
-    ]
+     },
+    ],
    },
    options: {
     indexAxis: "y",
@@ -1493,32 +1666,32 @@ async function renderTopProductsChart(startDate, endDate) {
     maintainAspectRatio: false,
     plugins: {
      legend: {
-      display: false
-     }
+      display: false,
+     },
     },
     scales: {
      x: {
       beginAtZero: true,
       ticks: {
        color: "var(--text-secondary)",
-       callback: function(value) {
-          return "₵" + Number(value).toLocaleString();
-       }
+       callback: function (value) {
+        return "₵" + Number(value).toLocaleString();
+       },
       },
       grid: {
-       color: "var(--border-color)"
-      }
+       color: "var(--border-color)",
+      },
      },
      y: {
       ticks: {
-       color: "var(--text-secondary)"
+       color: "var(--text-secondary)",
       },
       grid: {
-       display: false
-      }
-     }
-    }
-   }
+       display: false,
+      },
+     },
+    },
+   },
   });
  } catch (error) {
   console.error("Error rendering top products chart:", error);
@@ -1529,16 +1702,16 @@ async function renderInventoryChart() {
  try {
   const data = await getInventoryStatusReport();
   const ctx = document.getElementById("inventoryChart");
-  
+
   if (!ctx) return;
 
   const statusCounts = {
-   "OK": 0,
+   OK: 0,
    "Low Stock Alert": 0,
-   "Out of Stock": 0
+   "Out of Stock": 0,
   };
 
-  data.forEach(item => {
+  data.forEach((item) => {
    statusCounts[item.stock_status]++;
   });
 
@@ -1549,15 +1722,11 @@ async function renderInventoryChart() {
     datasets: [
      {
       data: Object.values(statusCounts),
-      backgroundColor: [
-       "var(--accent)",
-       "#ff9500",
-       "#ff4444"
-      ],
+      backgroundColor: ["var(--accent)", "#ff9500", "#ff4444"],
       borderColor: "var(--bg-primary)",
       borderWidth: 2,
-     }
-    ]
+     },
+    ],
    },
    options: {
     responsive: true,
@@ -1569,10 +1738,10 @@ async function renderInventoryChart() {
        color: "var(--text-secondary)",
        usePointStyle: true,
        padding: 15,
-      }
-     }
-    }
-   }
+      },
+     },
+    },
+   },
   });
  } catch (error) {
   console.error("Error rendering inventory chart:", error);
@@ -1583,12 +1752,11 @@ async function renderCashierPerformanceChart(startDate, endDate) {
  try {
   const data = await getCashierPerformanceReport(startDate, endDate);
   const ctx = document.getElementById("cashierChart");
-  
+
   if (!ctx) return;
 
-  const labels = data.map(c => c.username);
-  const salesData = data.map(d => parseFloat(d.total_sales || 0));
-  const transactionData = data.map(d => d.total_transactions || 0);
+  const labels = data.map((c) => c.username);
+  const salesData = data.map((d) => parseFloat(d.total_sales || 0));
 
   new Chart(ctx, {
    type: "bar",
@@ -1601,41 +1769,41 @@ async function renderCashierPerformanceChart(startDate, endDate) {
       backgroundColor: "var(--accent)",
       borderRadius: 5,
       borderSkipped: false,
-      yAxisID: "y"
-     }
-    ]
+      yAxisID: "y",
+     },
+    ],
    },
    options: {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
      legend: {
-      display: false
-     }
+      display: false,
+     },
     },
     scales: {
      y: {
       beginAtZero: true,
       ticks: {
        color: "var(--text-secondary)",
-       callback: function(value) {
-          return "₵" + Number(value).toLocaleString();
-       }
+       callback: function (value) {
+        return "₵" + Number(value).toLocaleString();
+       },
       },
       grid: {
-       color: "var(--border-color)"
-      }
+       color: "var(--border-color)",
+      },
      },
      x: {
       ticks: {
-       color: "var(--text-secondary)"
+       color: "var(--text-secondary)",
       },
       grid: {
-       display: false
-      }
-     }
-    }
-   }
+       display: false,
+      },
+     },
+    },
+   },
   });
  } catch (error) {
   console.error("Error rendering cashier chart:", error);

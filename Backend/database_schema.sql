@@ -101,7 +101,8 @@ CREATE TABLE payments (
   change_amount DECIMAL(10, 2) DEFAULT 0 CHECK (change_amount >= 0),
   payment_status VARCHAR(20) DEFAULT 'completed' CHECK (payment_status IN ('completed', 'pending', 'failed')),
   payment_details JSONB,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================
