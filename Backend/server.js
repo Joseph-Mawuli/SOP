@@ -49,8 +49,22 @@ app.use(
 );
 
 // CORS Configuration
+const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow non-browser requests and local tools without Origin header
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -156,7 +170,7 @@ app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`✓ POS System Backend started on port ${PORT}`);
   console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✓ Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`✓ Frontend URL(s): ${allowedOrigins.join(', ') || 'http://localhost:3000'}`);
   console.log(`✓ Database: ${process.env.DB_NAME || 'pos_system'}`);
   console.log('='.repeat(50));
   console.log('Available API Routes:');

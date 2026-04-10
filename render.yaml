@@ -1,0 +1,32 @@
+databases:
+  - name: nexus-pos-db
+    plan: free
+
+services:
+  - type: web
+    name: nexus-pos-backend
+    runtime: node
+    rootDir: Backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexus-pos-db
+          property: connectionString
+      - key: FRONTEND_URLS
+        value: https://your-frontend-project.vercel.app
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 24h
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false

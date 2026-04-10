@@ -536,7 +536,7 @@ localStorage.clear()
 ### CORS Errors
 ```
 # "Access to XMLHttpRequest blocked by CORS policy"
-# Update FRONTEND_URL in Backend/.env to match your frontend origin
+# Update FRONTEND_URLS in Backend/.env to match your frontend origin(s)
 # Restart backend server after changing .env
 ```
 
@@ -581,6 +581,55 @@ Role: admin
 ---
 
 ## 🚀 Deployment
+
+### Vercel (Frontend) + Render (Backend + PostgreSQL)
+
+This repo is now prepared for your target hosting setup:
+- Frontend on Vercel from `frontend/`
+- Backend on Render from `Backend/`
+- PostgreSQL on Render
+
+Files added for this setup:
+- `frontend/vercel.json`
+- `render.yaml`
+
+#### 1) Deploy Backend + Postgres on Render
+
+1. Push your latest code to GitHub.
+2. In Render, create a **Blueprint** deployment from this repository.
+3. Render will detect `render.yaml` and provision:
+  - `nexus-pos-db` (PostgreSQL)
+  - `nexus-pos-backend` (Node web service)
+4. In Render service settings, set these environment values:
+  - `PAYSTACK_SECRET_KEY` (required)
+  - `PAYSTACK_PUBLIC_KEY` (required)
+5. Copy your backend URL, e.g. `https://nexus-pos-backend.onrender.com`.
+
+#### 2) Deploy Frontend on Vercel
+
+1. Import the same repository in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Framework preset: `Other`.
+4. Before first deploy, open `frontend/vercel.json` and replace:
+  - `https://your-backend-service.onrender.com`
+  with your actual Render backend URL.
+5. Deploy and copy your frontend URL, e.g. `https://nexus-pos.vercel.app`.
+
+#### 3) Allow Frontend Origin in Backend CORS
+
+1. In Render backend environment variables, update:
+  - `FRONTEND_URLS=https://your-frontend-project.vercel.app`
+2. If you use preview domains, add them comma-separated:
+  - `FRONTEND_URLS=https://your-frontend-project.vercel.app,https://your-frontend-git-main-your-team.vercel.app`
+3. Redeploy backend.
+
+#### 4) Verify
+
+1. Open `https://your-frontend.vercel.app`.
+2. Ensure login works.
+3. Confirm API health via browser:
+  - `https://your-frontend.vercel.app/api/health`
+4. Test a Paystack payment flow end-to-end.
 
 ### Production Checklist
 

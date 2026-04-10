@@ -16,13 +16,18 @@
     <!-- Paystack Integration -->
     <script src="https://js.paystack.co/v1/inline.js"></script>
     <script>
+        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        window.APP_CONFIG = {
+            API_BASE_URL: isLocalHost ? 'http://localhost:5000/api' : '/api'
+        };
+
         // Initialize Paystack public key - will be loaded from backend
         let PAYSTACK_PUBLIC_KEY = 'pk_test_placeholder_loading...';
-        
+
         // Load public key from backend on page load
         async function loadPaystackKey() {
             try {
-                const response = await fetch('http://localhost:5000/api/config/paystack-public-key');
+                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/config/paystack-public-key`);
                 const result = await response.json();
                 if (result.success && result.data.publicKey) {
                     PAYSTACK_PUBLIC_KEY = result.data.publicKey;
@@ -32,7 +37,7 @@
                 console.error('Failed to load Paystack key:', error);
             }
         }
-        
+
         // Load key when page starts
         document.addEventListener('DOMContentLoaded', loadPaystackKey);
     </script>
